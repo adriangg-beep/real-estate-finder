@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Real Estate Finder</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">⌂</span><span>Real Estate Finder</span></div>
+    <div class="top-actions"><span id="connectionStatus" class="status">Demo</span><button class="icon-btn" title="Configuración">⚙</button></div>
+  </header>
+
+  <main class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-title">Búsqueda</div>
+      <label>Barrios</label>
+      <input id="neighborhoods" value="Vila Olímpica, Poblenou, Diagonal Mar" placeholder="Añade barrios">
+
+      <div class="grid2">
+        <div><label>Precio máximo</label><input id="maxPrice" type="number" value="650000"></div>
+        <div><label>Superficie mínima</label><input id="minArea" type="number" value="100"></div>
+      </div>
+
+      <div class="grid2">
+        <div><label>Habitaciones mín.</label><input id="minBeds" type="number" value="3"></div>
+        <div><label>Baños mín.</label><input id="minBaths" type="number" value="2"></div>
+      </div>
+
+      <div class="filter-section">
+        <div class="section-label">Requisitos</div>
+        <label class="check"><input type="checkbox" id="elevator" checked> Ascensor</label>
+        <label class="check"><input type="checkbox" id="parking" checked> Parking</label>
+        <label class="check"><input type="checkbox" id="habitable" checked> Habitable</label>
+        <label class="check"><input type="checkbox" id="available" checked> Disponible para entrar</label>
+        <label class="check"><input type="checkbox" id="excludeOccupied" checked> Excluir ocupados</label>
+        <label class="check"><input type="checkbox" id="excludeRented" checked> Excluir alquilados</label>
+      </div>
+
+      <div class="filter-section">
+        <div class="section-label">Fuentes</div>
+        <label class="check"><input type="checkbox" checked> Servihabitat</label>
+        <label class="check"><input type="checkbox" checked> Solvia</label>
+        <label class="check"><input type="checkbox" checked> Hipoges</label>
+        <label class="check"><input type="checkbox" checked> Altamira</label>
+        <label class="check"><input type="checkbox" checked> Aliseda</label>
+        <label class="check"><input type="checkbox" checked> Portales</label>
+      </div>
+
+      <button id="searchBtn" class="primary-btn">Buscar inmuebles</button>
+      <button id="resetBtn" class="secondary-btn">Restablecer</button>
+    </aside>
+
+    <section class="results">
+      <div class="results-head">
+        <div>
+          <h1>Inmuebles encontrados</h1>
+          <p id="resultSummary">37 inmuebles coinciden con tus criterios</p>
+        </div>
+        <select id="sort">
+          <option value="score">Mejor coincidencia</option>
+          <option value="price">Precio más bajo</option>
+          <option value="area">Mayor superficie</option>
+          <option value="price_m2">Menor €/m²</option>
+        </select>
+      </div>
+      <div id="cards" class="cards"></div>
+    </section>
+
+    <aside class="detail" id="detail">
+      <div class="detail-placeholder">
+        <div class="placeholder-icon">⌂</div>
+        <h2>Selecciona un inmueble</h2>
+        <p>La ficha completa aparecerá aquí.</p>
+      </div>
+    </aside>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
