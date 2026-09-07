@@ -1,82 +1,139 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Real Estate Finder</title>
-  <link rel="stylesheet" href="styles.css">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Real Estate Finder</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--bg:#f5f6f8;--panel:#fff;--text:#17202a;--muted:#6b7280;--line:#e5e7eb;--accent:#1769aa;--good:#16834b;--warn:#a16207;--bad:#b42318}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+button,input,select{font:inherit}.top{height:68px;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 24px;justify-content:space-between;position:sticky;top:0;z-index:5}.brand{font-weight:800;font-size:19px}.status{font-size:12px;color:var(--muted)}.layout{display:grid;grid-template-columns:280px minmax(420px,1fr) 430px;min-height:calc(100vh - 68px)}
+aside,.detail{background:#fff;padding:20px;border-right:1px solid var(--line)}.detail{border-left:1px solid var(--line);border-right:0;position:sticky;top:68px;height:calc(100vh - 68px);overflow:auto}.results{padding:20px;min-width:0}
+h2,h3{margin:0 0 14px}.field{margin-bottom:15px}.field label{display:block;font-size:12px;font-weight:700;margin-bottom:6px}.field input,.field select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}.checks{display:grid;gap:8px}.check{display:flex;gap:8px;align-items:center;font-size:13px}.check input{width:auto}
+.btn{border:0;background:var(--accent);color:#fff;border-radius:8px;padding:10px 13px;cursor:pointer;font-weight:700}.btn.secondary{background:#eef2f6;color:var(--text)}.actions{display:flex;gap:8px}.summary{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}.summary strong{font-size:15px}.sort{padding:8px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;display:grid;grid-template-columns:210px 1fr;overflow:hidden;margin-bottom:12px;cursor:pointer}.thumb{width:210px;height:170px;object-fit:cover;background:#e9edf1}.cardbody{padding:14px}.price{font-size:21px;font-weight:800}.meta{color:var(--muted);font-size:13px;margin:5px 0 10px}.title{font-weight:700;margin-bottom:9px}.chips{display:flex;flex-wrap:wrap;gap:6px}.chip{font-size:11px;background:#f0f3f6;border-radius:999px;padding:5px 8px}.score{float:right;font-size:12px;font-weight:800;color:var(--good)}.empty{padding:50px 20px;text-align:center;color:var(--muted)}
+.hero{width:100%;height:230px;object-fit:cover;border-radius:10px;background:#eef1f4;margin-bottom:14px}.detail .price{font-size:27px}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin:14px 0}.metric{border:1px solid var(--line);border-radius:8px;padding:9px}.metric b{display:block;font-size:15px}.metric span{display:block;color:var(--muted);font-size:11px;margin-top:3px}.section{border-top:1px solid var(--line);padding:15px 0}.kv{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px}.kv div{display:flex;justify-content:space-between;gap:10px}.kv span{color:var(--muted)}.source{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}.source a{color:var(--accent);text-decoration:none;font-weight:700}
+@media(max-width:1100px){.layout{grid-template-columns:250px 1fr}.detail{display:none}}@media(max-width:720px){.layout{display:block}aside{border-right:0;border-bottom:1px solid var(--line)}.card{grid-template-columns:125px 1fr}.thumb{width:125px;height:150px}.results{padding:12px}.top{padding:0 14px}}
+</style>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand"><span class="brand-mark">⌂</span><span>Real Estate Finder</span></div>
-    <div class="top-actions"><span id="connectionStatus" class="status">Demo</span><button class="icon-btn" title="Configuración">⚙</button></div>
-  </header>
+<header class="top"><div class="brand">Real Estate Finder</div><div id="status" class="status">Conectando con Supabase…</div></header>
+<div class="layout">
+<aside>
+<h3>Filtros</h3>
+<div class="field"><label>Barrios</label><input id="neighborhoods" placeholder="Poblenou, Vila Olímpica"></div>
+<div class="field"><label>Precio máximo (€)</label><input id="maxPrice" type="number" placeholder="650000"></div>
+<div class="field"><label>Superficie útil mínima (m²)</label><input id="minUseful" type="number" placeholder="100"></div>
+<div class="field"><label>Superficie construida mínima (m²)</label><input id="minBuilt" type="number"></div>
+<div class="field"><label>Dormitorios mínimos</label><input id="minBeds" type="number"></div>
+<div class="field"><label>Baños mínimos</label><input id="minBaths" type="number"></div>
+<div class="field"><label>Ordenar</label><select id="sort"><option value="score">Mejor coincidencia</option><option value="price">Menor precio</option><option value="area">Mayor superficie</option><option value="sqm">Menor €/m²</option></select></div>
+<div class="field checks">
+<label class="check"><input id="elevator" type="checkbox"> Ascensor</label>
+<label class="check"><input id="parking" type="checkbox"> Parking</label>
+<label class="check"><input id="terrace" type="checkbox"> Terraza</label>
+<label class="check"><input id="exterior" type="checkbox"> Exterior</label>
+<label class="check"><input id="habitable" type="checkbox"> Habitable</label>
+<label class="check"><input id="available" type="checkbox"> Disponible para entrar</label>
+<label class="check"><input id="excludeOccupied" type="checkbox" checked> Excluir ocupados</label>
+<label class="check"><input id="excludeRented" type="checkbox" checked> Excluir alquilados</label>
+<label class="check"><input id="excludeNoPossession" type="checkbox" checked> Excluir sin posesión</label>
+</div>
+<div class="actions"><button class="btn" id="apply">Aplicar</button><button class="btn secondary" id="reset">Limpiar</button></div>
+</aside>
+<main class="results">
+<div class="summary"><strong id="count">Cargando…</strong><select class="sort" id="sortTop"><option value="score">Mejor coincidencia</option><option value="price">Menor precio</option><option value="area">Mayor superficie</option><option value="sqm">Menor €/m²</option></select></div>
+<div id="list"></div>
+</main>
+<section class="detail" id="detail"><div class="empty">Selecciona una vivienda para ver la ficha completa.</div></section>
+</div>
+<script>
+const SUPABASE_URL="https://yxzvwjotsweqxmfurdme.supabase.co";
+const SUPABASE_KEY="sb_publishable_IbU9UqrVpmn_TWIub1BT9A_9ufY7w5p";
+const db=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+let properties=[],listings=[],images=[],sources=[],selected=null;
 
-  <main class="app-shell">
-    <aside class="sidebar">
-      <div class="sidebar-title">Búsqueda</div>
-      <label>Barrios</label>
-      <input id="neighborhoods" value="Vila Olímpica, Poblenou, Diagonal Mar" placeholder="Añade barrios">
-
-      <div class="grid2">
-        <div><label>Precio máximo</label><input id="maxPrice" type="number" value="650000"></div>
-        <div><label>Superficie mínima</label><input id="minArea" type="number" value="100"></div>
-      </div>
-
-      <div class="grid2">
-        <div><label>Habitaciones mín.</label><input id="minBeds" type="number" value="3"></div>
-        <div><label>Baños mín.</label><input id="minBaths" type="number" value="2"></div>
-      </div>
-
-      <div class="filter-section">
-        <div class="section-label">Requisitos</div>
-        <label class="check"><input type="checkbox" id="elevator" checked> Ascensor</label>
-        <label class="check"><input type="checkbox" id="parking" checked> Parking</label>
-        <label class="check"><input type="checkbox" id="habitable" checked> Habitable</label>
-        <label class="check"><input type="checkbox" id="available" checked> Disponible para entrar</label>
-        <label class="check"><input type="checkbox" id="excludeOccupied" checked> Excluir ocupados</label>
-        <label class="check"><input type="checkbox" id="excludeRented" checked> Excluir alquilados</label>
-      </div>
-
-      <div class="filter-section">
-        <div class="section-label">Fuentes</div>
-        <label class="check"><input type="checkbox" checked> Servihabitat</label>
-        <label class="check"><input type="checkbox" checked> Solvia</label>
-        <label class="check"><input type="checkbox" checked> Hipoges</label>
-        <label class="check"><input type="checkbox" checked> Altamira</label>
-        <label class="check"><input type="checkbox" checked> Aliseda</label>
-        <label class="check"><input type="checkbox" checked> Portales</label>
-      </div>
-
-      <button id="searchBtn" class="primary-btn">Buscar inmuebles</button>
-      <button id="resetBtn" class="secondary-btn">Restablecer</button>
-    </aside>
-
-    <section class="results">
-      <div class="results-head">
-        <div>
-          <h1>Inmuebles encontrados</h1>
-          <p id="resultSummary">37 inmuebles coinciden con tus criterios</p>
-        </div>
-        <select id="sort">
-          <option value="score">Mejor coincidencia</option>
-          <option value="price">Precio más bajo</option>
-          <option value="area">Mayor superficie</option>
-          <option value="price_m2">Menor €/m²</option>
-        </select>
-      </div>
-      <div id="cards" class="cards"></div>
-    </section>
-
-    <aside class="detail" id="detail">
-      <div class="detail-placeholder">
-        <div class="placeholder-icon">⌂</div>
-        <h2>Selecciona un inmueble</h2>
-        <p>La ficha completa aparecerá aquí.</p>
-      </div>
-    </aside>
-  </main>
-  <script src="app.js"></script>
+const $=id=>document.getElementById(id);
+const money=n=>new Intl.NumberFormat("es-ES",{style:"currency",currency:"EUR",maximumFractionDigits:0}).format(n);
+const num=n=>new Intl.NumberFormat("es-ES",{maximumFractionDigits:0}).format(n);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+function val(id){return $(id).value.trim()}
+function checks(){
+ return {elevator:$("elevator").checked,parking:$("parking").checked,terrace:$("terrace").checked,exterior:$("exterior").checked,
+ habitable:$("habitable").checked,available:$("available").checked,excludeOccupied:$("excludeOccupied").checked,
+ excludeRented:$("excludeRented").checked,excludeNoPossession:$("excludeNoPossession").checked};
+}
+function score(p,l){
+ let s=0;
+ if(p.occupancy_status==="vacant")s+=20;
+ if(p.possession_status==="available")s+=20;
+ if(p.elevator)s+=8;if(p.parking)s+=8;if(p.terrace)s+=6;if(p.exterior)s+=5;
+ if(p.condition==="renovated")s+=8;else if(p.condition==="good")s+=5;
+ if(l?.price_per_m2 && l.price_per_m2<5500)s+=8;
+ return Math.min(99,s);
+}
+function pass(p,l){
+ const ns=val("neighborhoods").toLowerCase().split(",").map(x=>x.trim()).filter(Boolean);
+ const c=checks();
+ if(ns.length && !ns.some(n=>(p.neighborhood||"").toLowerCase().includes(n)))return false;
+ if(val("maxPrice") && Number(l.price)>Number(val("maxPrice")))return false;
+ if(val("minUseful") && Number(p.surface_useful||0)<Number(val("minUseful")))return false;
+ if(val("minBuilt") && Number(p.surface_built||0)<Number(val("minBuilt")))return false;
+ if(val("minBeds") && Number(p.bedrooms||0)<Number(val("minBeds")))return false;
+ if(val("minBaths") && Number(p.bathrooms||0)<Number(val("minBaths")))return false;
+ if(c.elevator && p.elevator!==true)return false;if(c.parking && p.parking!==true)return false;
+ if(c.terrace && p.terrace!==true)return false;if(c.exterior && p.exterior!==true)return false;
+ if(c.habitable && !["good","renovated"].includes(p.condition))return false;
+ if(c.available && p.possession_status!=="available")return false;
+ if(c.excludeOccupied && p.occupancy_status==="occupied")return false;
+ if(c.excludeRented && p.occupancy_status==="rented")return false;
+ if(c.excludeNoPossession && p.possession_status==="no_possession")return false;
+ return true;
+}
+function render(){
+ let rows=properties.map(p=>{const ls=listings.filter(l=>l.property_id===p.id&&l.status==="active");const l=ls.sort((a,b)=>a.price-b.price)[0];return l?{p,l,score:score(p,l)}:null}).filter(Boolean).filter(x=>pass(x.p,x.l));
+ const sort=$("sort").value;
+ rows.sort((a,b)=>sort==="price"?a.l.price-b.l.price:sort==="area"?b.p.surface_useful-a.p.surface_useful:sort==="sqm"?a.l.price_per_m2-b.l.price_per_m2:b.score-a.score);
+ $("count").textContent=`${rows.length} viviendas`;
+ $("list").innerHTML=rows.length?rows.map(x=>card(x)).join(""):`<div class="empty">No hay viviendas que cumplan los filtros actuales.</div>`;
+ document.querySelectorAll(".card").forEach(el=>el.onclick=()=>showDetail(el.dataset.id));
+ if(selected && rows.some(x=>x.p.id===selected))showDetail(selected);
+}
+function card(x){
+ const im=images.find(i=>i.listing_id===x.l.id)?.image_url;
+ return `<article class="card" data-id="${x.p.id}"><img class="thumb" src="${esc(im||"https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=700&q=80")}" onerror="this.style.visibility='hidden'"><div class="cardbody"><span class="score">${x.score}/99</span><div class="price">${money(x.l.price)}</div><div class="meta">${num(x.p.surface_useful||x.p.surface_built)} m² útiles · ${x.p.bedrooms} hab. · ${x.p.bathrooms} baños · planta ${esc(x.p.floor)}</div><div class="title">${esc(x.l.title)}</div><div class="chips">${chip(x.p.neighborhood)}${x.p.elevator?chip("Ascensor"):""}${x.p.parking?chip("Parking"):""}${x.p.terrace?chip("Terraza"):""}${x.p.exterior?chip("Exterior"):""}</div></div></article>`;
+}
+function chip(s){return `<span class="chip">${esc(s)}</span>`}
+function showDetail(id){
+ selected=id;const p=properties.find(x=>x.id===id);if(!p)return;
+ const ls=listings.filter(l=>l.property_id===id&&l.status==="active");const im=images.find(i=>ls.some(l=>l.id===i.listing_id))?.image_url;
+ const hist=priceHistory.filter(h=>ls.some(l=>l.id===h.listing_id)).sort((a,b)=>new Date(a.observed_at)-new Date(b.observed_at));
+ $("detail").innerHTML=`<img class="hero" src="${esc(im||"https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?auto=format&fit=crop&w=1200&q=80")}" onerror="this.style.visibility='hidden'"><div class="price">${money(Math.min(...ls.map(l=>l.price)))}</div><div class="meta">${esc(p.address)} · ${esc(p.neighborhood)}, ${esc(p.city)}</div><div class="metrics"><div class="metric"><b>${num(p.surface_useful||p.surface_built)} m²</b><span>útiles</span></div><div class="metric"><b>${p.bedrooms}</b><span>habitaciones</span></div><div class="metric"><b>${p.bathrooms}</b><span>baños</span></div><div class="metric"><b>${esc(p.floor)}</b><span>planta</span></div></div>
+ <div class="section"><h3>Características</h3><div class="kv">${kv("Ascensor",p.elevator)}${kv("Parking",p.parking)}${kv("Parking incluido",p.parking_included)}${kv("Terraza",p.terrace)}${kv("Exterior",p.exterior)}${kv("Aire acondicionado",p.air_conditioning)}${kv("Calefacción",p.heating)}${kv("Trastero",p.storage_room)}${kv("Piscina",p.pool)}${kv("Jardín",p.garden)}${kv("Estado",p.condition)}${kv("Ocupación",p.occupancy_status)}${kv("Posesión",p.possession_status)}</div></div>
+ <div class="section"><h3>Historial de precio</h3>${hist.length?hist.map(h=>`<div class="source"><span>${new Date(h.observed_at).toLocaleDateString("es-ES")}</span><b>${money(h.price)}</b></div>`).join(""):"<span class='meta'>Sin historial todavía</span>"}</div>
+ <div class="section"><h3>Fuentes</h3>${ls.map(l=>{const s=sources.find(z=>z.id===l.source_id);return `<div class="source"><span>${esc(s?.name||"Fuente")}</span><a href="${esc(l.url)}" target="_blank" rel="noopener">Ver anuncio</a></div>`}).join("")}</div>`;
+}
+function kv(k,v){return `<div><span>${k}</span><b>${v===true?"Sí":v===false?"No":esc(v||"—")}</b></div>`}
+let priceHistory=[];
+async function load(){
+ const [a,b,c,d,e]=await Promise.all([
+  db.from("properties").select("*"),
+  db.from("listings").select("*"),
+  db.from("listing_images").select("*"),
+  db.from("sources").select("*").eq("active",true),
+  db.from("price_history").select("*")
+ ]);
+ const err=[a,b,c,d,e].find(x=>x.error);if(err)throw err.error;
+ properties=a.data||[];listings=b.data||[];images=c.data||[];sources=d.data||[];priceHistory=e.data||[];
+ $("status").textContent=`Supabase conectado · ${properties.length} propiedades · ${listings.length} anuncios`;
+ render();
+}
+["apply","sort","sortTop"].forEach(id=>$(id).addEventListener("change",render));
+$("apply").onclick=render;
+$("reset").onclick=()=>{document.querySelectorAll("aside input").forEach(i=>{if(i.type==="checkbox")i.checked=i.id.startsWith("exclude") ;else i.value=""});$("sort").value="score";$("sortTop").value="score";render()};
+$("sortTop").onchange=e=>{$("sort").value=e.target.value;render()};
+load().catch(e=>{$("status").textContent="Error de conexión";$("list").innerHTML=`<div class="empty">No se han podido cargar los datos. Revisa la consola del navegador.</div>`;console.error(e)});
+</script>
 </body>
 </html>
