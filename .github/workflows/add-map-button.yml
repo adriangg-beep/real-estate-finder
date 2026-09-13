@@ -1,0 +1,32 @@
+name: Add map view navigation
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch index.html
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text(encoding='utf-8')
+          marker='<div class="summary"><strong id="count">'
+          if 'href="./map.html"' not in s:
+              s=s.replace(marker,'<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><a href="./map.html" style="text-decoration:none"><button class="btn secondary" type="button">Mapa</button></a></div>'+marker,1)
+              p.write_text(s,encoding='utf-8')
+          else:
+              print('Map navigation already present')
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          if git diff --cached --quiet; then echo "Nothing to commit"; else git commit -m "Add map view button"; git push; fi
