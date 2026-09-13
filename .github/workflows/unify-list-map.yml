@@ -15,20 +15,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Apply unified view
-        shell: python
+      - name: Patch index.html with unified List/Map view
         run: |
+          python3 - <<'PY'
           from pathlib import Path
           p=Path('index.html')
           s=p.read_text()
-          # The existing workflow patch is re-run through this commit to republish the unified view.
-          # If the unified view is already present, leave the file unchanged.
-          if 'id="viewMap"' not in s:
-              old='<a href="./map.html" style="text-decoration:none"><button class="btn secondary" type="button">Mapa</button></a>'
-              new='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><button class="btn secondary" id="viewList" type="button">Lista</button><button class="btn secondary" id="viewMap" type="button">Mapa</button></div><div id="unifiedMap" class="unified-map" style="display:none"></div>'
-              if old in s: s=s.replace(old,new,1)
-              else: raise SystemExit('Expected map navigation marker not found')
-              p.write_text(s)
+          old='<a href="./map.html" style="text-decoration:none"><button class="btn secondary" type="button">Mapa</button></a>'
+          if old not in s:
+              print('Map link already replaced or not found')
+              raise SystemExit(0)
+          new='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><button class="btn secondary" id="viewList" type="button">Lista</button><button class="btn secondary" id="viewMap" type="button">Mapa</button></div><div id="unifiedMap" class="unified-map" style="display:none"></div>'
+          s=s.replace(old,new,1)
+          css='''\n.unified-map{height:calc(100vh - 150px);min-height:500px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#e9edf1}\n@media(max-width:720px){.unified-map{height:calc(100vh - 145px);min-height:420px}}\n'''
+          s=s.replace('</style>',css+'</style>',1)
+          js=r'''<script>
+(function(){
+let mapMode='list',umap=null,ulayer=null,leafletPromise=null;
+function loadLeaflet(){if(window.L)return Promise.resolve();if(leafletPromise)return leafletPromise;leafletPromise=new Promise((resolve,reject)=>{const css=document.createElement('link');css.rel='stylesheet';css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(css);const sc=document.createElement('script');sc.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';sc.onload=resolve;sc.onerror=reject;document.head.appendChild(sc)});return leafletPromise}
+function activeMapRows(){const rows=[];const ps=(typeof properties!=='undefined'&&Array.isArray(properties))?properties:[];ps.forEach(p=>{const lat=Number(p.latitude),lon=Number(p.longitude);if(!Number.isFinite(lat)||!Number.isFinite(lon)||lat<35||lat>44||lon<-10||lon>5)return;const ls=(typeof activeListings==='function'?activeListings(p):[]).filter(l=>l.status==='active');if(!ls.length)return;const l=ls[0];if(typeof pass==='function'&&!pass(p,l))return;rows.push({p,l})});return rows}
+function popup(r){const p=r.p,l=r.l;const ims=(typeof images!=='undefined'&&Array.isArray(images))?images:[];const imgs=ims.filter(i=>i.listing_id===l.id).sort((a,b)=>(a.position??999)-(b.position??999));const img=imgs[0]?.url;const price=l.price==null?'—':new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(Number(l.price));const unit=l.operation_type==='rent'?'/mes':'';const safe=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));return `<div style="min-width:190px">${img?`<img src="${safe(img)}" style="width:190px;height:105px;object-fit:cover;border-radius:6px">`:''}<div style="font-size:18px;font-weight:800;margin-top:6px">${price}${unit}</div><div style="font-size:12px;color:#667085;margin:4px 0">${p.built_area?Math.round(Number(p.built_area))+' m² · ':''}${p.bedrooms??'—'} hab. · ${safe(p.population||p.municipality||'')}</div><a href="?property=${encodeURIComponent(p.id)}" style="color:#1769aa;font-weight:700;text-decoration:none">Ver ficha</a></div>`}
+async function renderUnifiedMap(){try{await loadLeaflet();const el=document.getElementById('unifiedMap');if(!el)return;if(!umap){umap=L.map(el).setView([41.3874,2.1686],12);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(umap);ulayer=L.layerGroup().addTo(umap)}ulayer.clearLayers();const rows=activeMapRows();rows.forEach(r=>L.marker([Number(r.p.latitude),Number(r.p.longitude)]).bindPopup(popup(r)).addTo(ulayer));if(rows.length)umap.fitBounds(L.latLngBounds(rows.map(r=>[Number(r.p.latitude),Number(r.p.longitude)])),{padding:[30,30],maxZoom:15});setTimeout(()=>umap.invalidateSize(),100)}catch(e){console.error('Unified map error',e)}}
+function setMode(mode){mapMode=mode==='map';const list=document.getElementById('list'),map=document.getElementById('unifiedMap'),a=document.getElementById('viewList'),b=document.getElementById('viewMap');if(list)list.style.display=mapMode?'none':'';if(map)map.style.display=mapMode?'block':'none';if(a)a.classList.toggle('active',!mapMode);if(b)b.classList.toggle('active',mapMode);if(mapMode)setTimeout(renderUnifiedMap,50)}
+function refreshMapIfVisible(){if(mapMode)renderUnifiedMap()}
+window.addEventListener('load',()=>{document.getElementById('viewList')?.addEventListener('click',()=>setMode('list'));document.getElementById('viewMap')?.addEventListener('click',()=>setMode('map'));['apply','reset','saleMode','rentMode','clearMobile','municipality','population','neighborhood'].forEach(id=>document.getElementById(id)?.addEventListener('click',()=>setTimeout(refreshMapIfVisible,300)));setTimeout(refreshMapIfVisible,1200)})
+})();
+</script>'''
+          s=s.replace('</body>',js+'</body>',1)
+          p.write_text(s)
+          PY
       - name: Commit and push
         run: |
           git config user.name 'github-actions[bot]'
