@@ -1,0 +1,112 @@
+name: Unify list and map views
+on:
+  push:
+    paths:
+      - 'index.html'
+      - '.github/workflows/unify-list-map.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch index with unified map view
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          old = '<a href="./map.html" style="text-decoration:none"><button class="btn secondary" type="button">Mapa</button></a>'
+          new = '<div class="view-switch"><button id="viewList" class="btn secondary active-view" type="button">Lista</button><button id="viewMap" class="btn secondary" type="button">Mapa</button></div>'
+          if old in s:
+              s = s.replace(old, new, 1)
+          css = r'''
+.unified-map{display:none;width:100%;height:calc(100vh - 150px);min-height:520px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#e9edf1}
+.unified-map.is-active{display:block}.view-switch{display:flex;gap:8px;margin-bottom:10px}.view-switch .active-view{background:var(--accent);color:#fff}.view-switch .btn{cursor:pointer}.map-status{position:absolute;z-index:500;top:12px;left:50%;transform:translateX(-50%);background:#fff;border:1px solid var(--line);border-radius:8px;padding:7px 11px;font-size:12px;box-shadow:var(--shadow);display:none}
+@media(max-width:720px){.unified-map{height:calc(100vh - 180px);min-height:420px}.view-switch{margin-bottom:8px}}
+'''
+          if '.unified-map{' not in s:
+              s = s.replace('</style>', css + '</style>', 1)
+          marker = '<div id="activeFilters" class="chipsbar"></div><div id="list"></div>'
+          replacement = '<div id="activeFilters" class="chipsbar"></div><div id="list"></div><div id="unifiedMap" class="unified-map"></div>'
+          if marker in s and 'id="unifiedMap"' not in s:
+              s = s.replace(marker, replacement, 1)
+          js = r'''
+<script>
+(function(){
+  let umap=null, ulayer=null, leafletPromise=null, mapMode=false;
+  const loadLeaflet=()=>{
+    if(window.L) return Promise.resolve();
+    if(leafletPromise) return leafletPromise;
+    leafletPromise=new Promise((resolve,reject)=>{
+      const css=document.createElement('link');css.rel='stylesheet';css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(css);
+      const js=document.createElement('script');js.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';js.onload=resolve;js.onerror=reject;document.head.appendChild(js);
+    });
+    return leafletPromise;
+  };
+  function activeMapRows(){
+    const rows=[];
+    (window.properties||[]).forEach(p=>{
+      const lat=Number(p.latitude),lon=Number(p.longitude);
+      if(!Number.isFinite(lat)||!Number.isFinite(lon)||lat<35||lat>44||lon<-10||lon>5)return;
+      const ls=(typeof activeListings==='function'?activeListings(p):[]).filter(l=>l.status==='active');
+      const l=ls.find(x=>typeof pass==='function'&&pass(p,x));
+      if(!l)return;
+      rows.push({p,l});
+    });
+    return rows;
+  }
+  function popup(r){
+    const p=r.p,l=r.l;
+    const imgs=(window.images||[]).filter(i=>i.listing_id===l.id).sort((a,b)=>(a.position??999)-(b.position??999));
+    const img=imgs[0]?.url;
+    const price=l.price==null?'—':new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(Number(l.price));
+    const unit=(l.operation_type==='rent')?'/mes':'';
+    const safe=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    return `<div style="min-width:190px">${img?`<img src="${safe(img)}" style="width:190px;height:105px;object-fit:cover;border-radius:6px">`:''}<div style="font-size:18px;font-weight:800;margin-top:6px">${price}${unit}</div><div style="font-size:12px;color:#667085;margin:4px 0">${p.built_area?Math.round(Number(p.built_area))+' m² · ':''}${p.bedrooms??'—'} hab. · ${safe(p.population||p.municipality||'')}</div><a href="?property=${encodeURIComponent(p.id)}" style="color:#1769aa;font-weight:700;text-decoration:none">Ver ficha</a></div>`;
+  }
+  async function renderUnifiedMap(){
+    await loadLeaflet();
+    const el=document.getElementById('unifiedMap'); if(!el)return;
+    if(!umap){
+      umap=L.map(el).setView([41.3874,2.1686],12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(umap);
+      ulayer=L.layerGroup().addTo(umap);
+    }
+    ulayer.clearLayers();
+    const rows=activeMapRows();
+    rows.forEach(r=>L.marker([Number(r.p.latitude),Number(r.p.longitude)]).bindPopup(popup(r)).addTo(ulayer));
+    if(rows.length) umap.fitBounds(L.latLngBounds(rows.map(r=>[Number(r.p.latitude),Number(r.p.longitude)])),{padding:[30,30],maxZoom:15});
+    setTimeout(()=>umap.invalidateSize(),100);
+  }
+  function setMode(mode){
+    mapMode=mode==='map';
+    const list=document.getElementById('list'),map=document.getElementById('unifiedMap'),vl=document.getElementById('viewList'),vm=document.getElementById('viewMap');
+    if(!list||!map)return;
+    list.style.display=mapMode?'none':'';map.classList.toggle('is-active',mapMode);
+    vl?.classList.toggle('active-view',!mapMode);vm?.classList.toggle('active-view',mapMode);
+    if(mapMode) renderUnifiedMap();
+  }
+  function refreshMapIfVisible(){if(mapMode)renderUnifiedMap()}
+  window.addEventListener('load',()=>{
+    document.getElementById('viewList')?.addEventListener('click',()=>setMode('list'));
+    document.getElementById('viewMap')?.addEventListener('click',()=>setMode('map'));
+    ['apply','reset','saleMode','rentMode','clearMobile','municipality','population','neighborhood'].forEach(id=>document.getElementById(id)?.addEventListener('click',()=>setTimeout(refreshMapIfVisible,250)));
+    setTimeout(refreshMapIfVisible,1000);
+    setInterval(()=>{if(mapMode&&window.properties?.length)refreshMapIfVisible()},2000);
+  });
+})();
+</script>
+'''
+          if 'function renderUnifiedMap' not in s:
+              s = s.replace('</body>', js + '</body>', 1)
+          p.write_text(s, encoding='utf-8')
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git diff --cached --quiet || git commit -m 'Add unified list and map view'
+          git push
