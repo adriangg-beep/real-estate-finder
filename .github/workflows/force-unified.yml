@@ -1,0 +1,38 @@
+name: Force unified patch
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'republish-unified.html'
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Restore and run existing patch workflow logic
+        run: |
+          git show 9355f69c8c0f6064bc5f844a9e13be08a8071689:index.html > index.html
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('index.html')
+          s=p.read_text()
+          old='<a href="./map.html" style="text-decoration:none"><button class="btn secondary" type="button">Mapa</button></a>'
+          new='<div style="display:flex;gap:8px"><button class="btn secondary" id="viewList" type="button">Lista</button><button class="btn secondary" id="viewMap" type="button">Mapa</button></div>'
+          s=s.replace(old,new,1)
+          css='''\n.unified-map{display:none;width:100%;height:calc(100vh - 150px);min-height:500px;border:1px solid #e4e7ec;border-radius:12px;overflow:hidden;background:#eef1f4}\n@media(max-width:720px){.unified-map{height:calc(100vh - 150px);min-height:420px}}\n'''
+          s=s.replace('</style>',css+'</style>',1)
+          s=s.replace('<div id="activeFilters" class="chipsbar"></div><div id="list"></div>','<div id="activeFilters" class="chipsbar"></div><div id="list"></div><div id="unifiedMap" class="unified-map"></div>',1)
+          js='''\n<script>\n(function(){\nlet mapMode=false,umap=null,ulayer=null;\nfunction loadLeaflet(){return new Promise((resolve,reject)=>{if(window.L)return resolve();let l=document.createElement('link');l.rel='stylesheet';l.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(l);let s=document.createElement('script');s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';s.onload=resolve;s.onerror=reject;document.head.appendChild(s)})}\nfunction rows(){let out=[];let ps=(typeof properties!=='undefined'&&Array.isArray(properties))?properties:[];ps.forEach(p=>{let lat=Number(p.latitude),lon=Number(p.longitude);if(!Number.isFinite(lat)||!Number.isFinite(lon)||lat<35||lat>44||lon<-10||lon>5)return;let ls=(typeof activeListings==='function'?activeListings(p):[]).filter(l=>l.status==='active');ls.forEach(l=>out.push({p,l}))});return out}\nfunction popup(r){let p=r.p,l=r.l,ims=(typeof images!=='undefined'&&Array.isArray(images))?images:[],imgs=ims.filter(i=>i.listing_id===l.id).sort((a,b)=>(a.position??999)-(b.position??999)),img=imgs[0]?.url,price=l.price==null?'—':new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(Number(l.price));return `<div style="min-width:190px">${img?`<img src="${img}" style="width:190px;height:105px;object-fit:cover;border-radius:6px">`:''}<div style="font-size:18px;font-weight:800;margin-top:6px">${price}${l.operation_type==='rent'?'/mes':''}</div><div style="font-size:12px;color:#667085;margin:4px 0">${p.built_area?Math.round(Number(p.built_area))+' m² · ':''}${p.bedrooms??'—'} hab. · ${p.population||p.municipality||''}</div><a href="?property=${encodeURIComponent(p.id)}" style="color:#1769aa;font-weight:700;text-decoration:none">Ver ficha</a></div>`}\nasync function render(){try{await loadLeaflet();let el=document.getElementById('unifiedMap');if(!el)return;if(!umap){umap=L.map(el).setView([41.3874,2.1686],12);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(umap);ulayer=L.layerGroup().addTo(umap)}ulayer.clearLayers();let rs=rows();rs.forEach(r=>L.marker([Number(r.p.latitude),Number(r.p.longitude)]).bindPopup(popup(r)).addTo(ulayer));if(rs.length)umap.fitBounds(L.latLngBounds(rs.map(r=>[Number(r.p.latitude),Number(r.p.longitude)])),{padding:[30,30],maxZoom:15});setTimeout(()=>umap.invalidateSize(),100)}catch(e){console.error(e)}}\nfunction setMode(m){mapMode=m==='map';document.getElementById('list').style.display=mapMode?'none':'';document.getElementById('unifiedMap').style.display=mapMode?'block':'none';if(mapMode)setTimeout(render,50)}\nwindow.addEventListener('load',()=>{document.getElementById('viewList')?.addEventListener('click',()=>setMode('list'));document.getElementById('viewMap')?.addEventListener('click',()=>setMode('map'));['apply','reset','saleMode','rentMode','clearMobile','municipality','population','neighborhood'].forEach(id=>document.getElementById(id)?.addEventListener('click',()=>setTimeout(()=>{if(mapMode)render()},300)))});\n})();\n</script>\n'''
+          s=s.replace('</body>',js+'</body>',1)
+          p.write_text(s)
+          PY
+          rm -f republish-unified.html
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html republish-unified.html
+          git commit -m 'Publish unified list and map view' || exit 0
+          git push
