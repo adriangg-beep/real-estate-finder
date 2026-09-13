@@ -48,7 +48,8 @@ jobs:
   };
   function activeMapRows(){
     const rows=[];
-    (window.properties||[]).forEach(p=>{
+    const ps=(typeof properties!=='undefined'&&Array.isArray(properties))?properties:[];
+    ps.forEach(p=>{
       const lat=Number(p.latitude),lon=Number(p.longitude);
       if(!Number.isFinite(lat)||!Number.isFinite(lon)||lat<35||lat>44||lon<-10||lon>5)return;
       const ls=(typeof activeListings==='function'?activeListings(p):[]).filter(l=>l.status==='active');
@@ -60,7 +61,8 @@ jobs:
   }
   function popup(r){
     const p=r.p,l=r.l;
-    const imgs=(window.images||[]).filter(i=>i.listing_id===l.id).sort((a,b)=>(a.position??999)-(b.position??999));
+    const ims=(typeof images!=='undefined'&&Array.isArray(images))?images:[];
+    const imgs=ims.filter(i=>i.listing_id===l.id).sort((a,b)=>(a.position??999)-(b.position??999));
     const img=imgs[0]?.url;
     const price=l.price==null?'—':new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(Number(l.price));
     const unit=(l.operation_type==='rent')?'/mes':'';
@@ -68,18 +70,20 @@ jobs:
     return `<div style="min-width:190px">${img?`<img src="${safe(img)}" style="width:190px;height:105px;object-fit:cover;border-radius:6px">`:''}<div style="font-size:18px;font-weight:800;margin-top:6px">${price}${unit}</div><div style="font-size:12px;color:#667085;margin:4px 0">${p.built_area?Math.round(Number(p.built_area))+' m² · ':''}${p.bedrooms??'—'} hab. · ${safe(p.population||p.municipality||'')}</div><a href="?property=${encodeURIComponent(p.id)}" style="color:#1769aa;font-weight:700;text-decoration:none">Ver ficha</a></div>`;
   }
   async function renderUnifiedMap(){
-    await loadLeaflet();
-    const el=document.getElementById('unifiedMap'); if(!el)return;
-    if(!umap){
-      umap=L.map(el).setView([41.3874,2.1686],12);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(umap);
-      ulayer=L.layerGroup().addTo(umap);
-    }
-    ulayer.clearLayers();
-    const rows=activeMapRows();
-    rows.forEach(r=>L.marker([Number(r.p.latitude),Number(r.p.longitude)]).bindPopup(popup(r)).addTo(ulayer));
-    if(rows.length) umap.fitBounds(L.latLngBounds(rows.map(r=>[Number(r.p.latitude),Number(r.p.longitude)])),{padding:[30,30],maxZoom:15});
-    setTimeout(()=>umap.invalidateSize(),100);
+    try{
+      await loadLeaflet();
+      const el=document.getElementById('unifiedMap'); if(!el)return;
+      if(!umap){
+        umap=L.map(el).setView([41.3874,2.1686],12);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(umap);
+        ulayer=L.layerGroup().addTo(umap);
+      }
+      ulayer.clearLayers();
+      const rows=activeMapRows();
+      rows.forEach(r=>L.marker([Number(r.p.latitude),Number(r.p.longitude)]).bindPopup(popup(r)).addTo(ulayer));
+      if(rows.length) umap.fitBounds(L.latLngBounds(rows.map(r=>[Number(r.p.latitude),Number(r.p.longitude)])),{padding:[30,30],maxZoom:15});
+      setTimeout(()=>umap.invalidateSize(),100);
+    }catch(e){console.error('Unified map error',e);}
   }
   function setMode(mode){
     mapMode=mode==='map';
@@ -93,9 +97,8 @@ jobs:
   window.addEventListener('load',()=>{
     document.getElementById('viewList')?.addEventListener('click',()=>setMode('list'));
     document.getElementById('viewMap')?.addEventListener('click',()=>setMode('map'));
-    ['apply','reset','saleMode','rentMode','clearMobile','municipality','population','neighborhood'].forEach(id=>document.getElementById(id)?.addEventListener('click',()=>setTimeout(refreshMapIfVisible,250)));
-    setTimeout(refreshMapIfVisible,1000);
-    setInterval(()=>{if(mapMode&&window.properties?.length)refreshMapIfVisible()},2000);
+    ['apply','reset','saleMode','rentMode','clearMobile','municipality','population','neighborhood'].forEach(id=>document.getElementById(id)?.addEventListener('click',()=>setTimeout(refreshMapIfVisible,300)));
+    setTimeout(refreshMapIfVisible,1200);
   });
 })();
 </script>
