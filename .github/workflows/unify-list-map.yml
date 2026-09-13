@@ -20,29 +20,27 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
           p=Path('index.html')
           s=p.read_text()
 
-          # Remove all previous map CSS injected by this workflow.
-          s=re.sub(r'\n\.unified-map\{.*?\}\s*@media\(max-width:720px\)\{\.unified-map\{.*?\}\}\s*', '\n', s, flags=re.S)
+          # Remove the exact duplicated controls currently present in index.html.
+          old_nested='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><button class="btn secondary" id="viewList" type="button">Lista</button><button class="btn secondary" id="viewMap" type="button">Mapa</button></div><div id="unifiedMap" class="unified-map" style="display:none"></div></div>'
+          s=s.replace(old_nested,'')
+          old_link='<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><a href="./map.html" style="text-decoration:none"><button class="btn secondary" type="button">Mapa</button></a></div>'
+          s=s.replace(old_link,'')
 
-          # Remove every previous unified-map container and view-switch block.
-          s=re.sub(r'<div[^>]*id=["\']unifiedMap["\'][^>]*></div>', '', s)
-          s=re.sub(r'<div[^>]*class=["\'][^"\']*view-switch[^"\']*["\'][^>]*>.*?</div>', '', s, flags=re.S)
+          # Remove any previous unified view block/script so the operation is idempotent.
+          import re
+          s=re.sub(r'\n?\.unified-map\{[^}]*\}\n?@media\(max-width:720px\)\{\.unified-map\{[^}]*\}\}\n?', '\n', s, count=1)
+          s=re.sub(r'<div[^>]*class="view-switch"[^>]*>.*?</div>', '', s, flags=re.S)
+          s=re.sub(r'<div[^>]*id="unifiedMap"[^>]*></div>', '', s)
+          s=re.sub(r'<script>\s*\(function\(\)\{\s*let mapMode=.*?</script>', '', s, flags=re.S)
 
-          # Remove the old standalone map.html button block.
-          s=re.sub(r'<div[^>]*>\s*<a href=["\']\./map\.html["\'][\s\S]*?</div>', '', s, count=1)
-
-          # Remove any previously injected unified-map script by its distinctive variable.
-          s=re.sub(r'<script>\s*\(function\(\)\{\s*let mapMode=.*?</script>\s*', '', s, flags=re.S)
-
-          css='''\n.unified-map{height:calc(100vh - 150px);min-height:500px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#e9edf1}\n@media(max-width:720px){.unified-map{height:calc(100vh - 145px);min-height:420px}}\n'''
+          css='\n.unified-map{height:calc(100vh - 150px);min-height:500px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#e9edf1}\n@media(max-width:720px){.unified-map{height:calc(100vh - 145px);min-height:420px}}\n'
           s=s.replace('</style>',css+'</style>',1)
 
-          # Rebuild exactly one navigation block immediately before the summary.
           marker='<div class="summary">'
-          controls='''<div class="view-switch" style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><button class="btn secondary" id="viewList" type="button">Lista</button><button class="btn secondary" id="viewMap" type="button">Mapa</button></div><div id="unifiedMap" class="unified-map" style="display:none"></div>'''
+          controls='<div class="view-switch" style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><button class="btn secondary" id="viewList" type="button">Lista</button><button class="btn secondary" id="viewMap" type="button">Mapa</button></div><div id="unifiedMap" class="unified-map" style="display:none"></div>'
           if marker not in s:
               raise SystemExit('summary marker not found')
           s=s.replace(marker,controls+marker,1)
@@ -56,7 +54,7 @@ function popup(r){const p=r.p,l=r.l;const price=l.price==null?'—':new Intl.Num
 async function renderMap(){try{await loadLeaflet();const el=document.getElementById('unifiedMap');if(!el)return;if(!umap){umap=L.map(el).setView([41.3874,2.1686],12);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(umap);ulayer=L.layerGroup().addTo(umap)}ulayer.clearLayers();const rows=mapRows();rows.forEach(r=>L.marker([Number(r.p.latitude),Number(r.p.longitude)]).bindPopup(popup(r)).addTo(ulayer));if(rows.length)umap.fitBounds(L.latLngBounds(rows.map(r=>[Number(r.p.latitude),Number(r.p.longitude)])),{padding:[30,30],maxZoom:15});setTimeout(()=>umap.invalidateSize(),100)}catch(e){console.error('Unified map error',e)}}
 function setMode(map){mapMode=map;const list=document.getElementById('list'),el=document.getElementById('unifiedMap');if(list)list.style.display=map?'none':'';if(el)el.style.display=map?'block':'none';document.getElementById('viewList')?.classList.toggle('active',!map);document.getElementById('viewMap')?.classList.toggle('active',map);if(map)setTimeout(renderMap,50)}
 function refresh(){if(mapMode)setTimeout(renderMap,100)}
-window.addEventListener('load',()=>{document.getElementById('viewList')?.addEventListener('click',()=>setMode(false));document.getElementById('viewMap')?.addEventListener('click',()=>setMode(true));['apply','reset','saleMode','rentMode','clearMobile','municipality','population','neighborhood','sort'].forEach(id=>document.getElementById(id)?.addEventListener('click',refresh))})
+window.addEventListener('load',()=>{document.getElementById('viewList')?.addEventListener('click',()=>setMode(false));document.getElementById('viewMap')?.addEventListener('click',()=>setMode(true));['apply','reset','saleMode','rentMode','clearMobile','sort'].forEach(id=>document.getElementById(id)?.addEventListener('click',refresh));['municipality','population','neighborhood'].forEach(id=>document.getElementById(id)?.addEventListener('change',refresh));document.querySelectorAll('aside input').forEach(el=>el.addEventListener('change',refresh))})
 })();
 </script>'''
           s=s.replace('</body>',js+'</body>',1)
@@ -67,4 +65,4 @@ window.addEventListener('load',()=>{document.getElementById('viewList')?.addEven
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add index.html
-          if git diff --cached --quiet; then echo 'No changes'; else git commit -m 'Normalize unified list map view'; git push; fi
+          if git diff --cached --quiet; then echo 'No changes'; else git commit -m 'Fix unified list map view'; git push; fi
