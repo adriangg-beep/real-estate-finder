@@ -1,0 +1,54 @@
+name: Fix mobile property detail
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch index.html
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          changed = False
+
+          css_marker = '</style>'
+          css = '''\n.mobile-detail-overlay{display:none}\n@media(max-width:720px){.mobile-detail-overlay{position:fixed;inset:60px 0 0;background:#fff;z-index:60;overflow:auto;padding:14px}.mobile-detail-overlay .mobile-detail-head{position:sticky;top:-14px;margin:-14px -14px 14px;padding:10px 14px;background:#fff;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;z-index:2}.mobile-detail-overlay .mobile-detail-head button{border:0;background:#eef2f6;border-radius:8px;padding:8px 12px;font-weight:700}.mobile-detail-overlay .detail{display:block;position:static;height:auto;border:0;padding:0}.mobile-detail-overlay .hero{height:230px}.mobile-detail-overlay .metrics{grid-template-columns:repeat(2,1fr)}}\n'''
+          if '.mobile-detail-overlay' not in s:
+              s = s.replace(css_marker, css + css_marker, 1)
+              changed = True
+
+          body_marker = '</body>'
+          overlay = '''<div id="mobileDetailOverlay" class="mobile-detail-overlay"><div class="mobile-detail-head"><strong>Ficha de la vivienda</strong><button id="closeMobileDetail">Cerrar</button></div><div id="mobileDetailContent"></div></div>'''
+          if 'id="mobileDetailOverlay"' not in s:
+              s = s.replace(body_marker, overlay + body_marker, 1)
+              changed = True
+
+          hook = '''<script>\n(function(){\n  const overlay=document.getElementById('mobileDetailOverlay'),content=document.getElementById('mobileDetailContent'),close=document.getElementById('closeMobileDetail');\n  if(!overlay||!content||!close)return;\n  close.addEventListener('click',()=>overlay.style.display='none');\n  document.addEventListener('click',e=>{\n    const card=e.target.closest('.card');\n    if(!card)return;\n    setTimeout(()=>{\n      const detail=document.getElementById('detail');\n      if(!detail||!detail.innerHTML||detail.querySelector('.empty'))return;\n      content.innerHTML=detail.innerHTML;\n      overlay.style.display='block';\n      window.scrollTo(0,0);\n    },80);\n  },false);\n})();\n</script>\n'''
+          if 'mobileDetailOverlay' in s and 'const overlay=document.getElementById' not in s:
+              s = s.replace(body_marker, hook + body_marker, 1)
+              changed = True
+
+          if changed:
+              p.write_text(s, encoding='utf-8')
+          else:
+              print('No changes needed')
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          if git diff --cached --quiet; then
+            echo "Nothing to commit"
+          else
+            git commit -m "Fix mobile property detail view"
+            git push
+          fi
