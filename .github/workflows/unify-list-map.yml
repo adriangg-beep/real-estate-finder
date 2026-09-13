@@ -16,73 +16,47 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch index.html with unified List/Map view
+      - name: Normalize unified list/map block
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
           p=Path('index.html')
           s=p.read_text()
 
-          # Remove any previous unified-map injection, including duplicated/partial attempts.
-          import re
-          s=re.sub(r'\n\.unified-map\{[^}]*\}[^\n]*\n', '\n', s)
-          s=re.sub(r'<div id="unifiedMap"[^>]*></div>', '', s)
-          s=re.sub(r'<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><button class="btn secondary" id="viewList".*?</div><div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><a href="\./map\.html".*?</div>', '', s)
-          s=re.sub(r'<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><button class="btn secondary" id="viewList".*?</div>', '', s)
-          s=re.sub(r'<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><a href="\./map\.html".*?</div>', '', s)
-          s=re.sub(r'\n<script>\(function\(\)\{\nlet mapMode=.*?</script>', '', s, flags=re.S)
+          # Remove all previous map CSS injected by this workflow.
+          s=re.sub(r'\n\.unified-map\{.*?\}\s*@media\(max-width:720px\)\{\.unified-map\{.*?\}\}\s*', '\n', s, flags=re.S)
+
+          # Remove every previous unified-map container and view-switch block.
+          s=re.sub(r'<div[^>]*id=["\']unifiedMap["\'][^>]*></div>', '', s)
+          s=re.sub(r'<div[^>]*class=["\'][^"\']*view-switch[^"\']*["\'][^>]*>.*?</div>', '', s, flags=re.S)
+
+          # Remove the old standalone map.html button block.
+          s=re.sub(r'<div[^>]*>\s*<a href=["\']\./map\.html["\'][\s\S]*?</div>', '', s, count=1)
+
+          # Remove any previously injected unified-map script by its distinctive variable.
+          s=re.sub(r'<script>\s*\(function\(\)\{\s*let mapMode=.*?</script>\s*', '', s, flags=re.S)
 
           css='''\n.unified-map{height:calc(100vh - 150px);min-height:500px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#e9edf1}\n@media(max-width:720px){.unified-map{height:calc(100vh - 145px);min-height:420px}}\n'''
           s=s.replace('</style>',css+'</style>',1)
 
+          # Rebuild exactly one navigation block immediately before the summary.
           marker='<div class="summary">'
           controls='''<div class="view-switch" style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><button class="btn secondary" id="viewList" type="button">Lista</button><button class="btn secondary" id="viewMap" type="button">Mapa</button></div><div id="unifiedMap" class="unified-map" style="display:none"></div>'''
-          if marker in s:
-              s=s.replace(marker,controls+marker,1)
+          if marker not in s:
+              raise SystemExit('summary marker not found')
+          s=s.replace(marker,controls+marker,1)
 
           js=r'''<script>
 (function(){
 let mapMode=false,umap=null,ulayer=null,leafletPromise=null;
-function loadLeaflet(){
-  if(window.L)return Promise.resolve();
-  if(leafletPromise)return leafletPromise;
-  leafletPromise=new Promise((resolve,reject)=>{
-    const css=document.createElement('link');css.rel='stylesheet';css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(css);
-    const sc=document.createElement('script');sc.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';sc.onload=resolve;sc.onerror=reject;document.head.appendChild(sc);
-  });return leafletPromise;
-}
-function mapRows(){
-  const out=[];const ps=(typeof properties!=='undefined'&&Array.isArray(properties))?properties:[];
-  ps.forEach(p=>{
-    const lat=Number(p.latitude),lon=Number(p.longitude);
-    if(!Number.isFinite(lat)||!Number.isFinite(lon)||lat<35||lat>44||lon<-10||lon>5)return;
-    const ls=(typeof activeListings==='function'?activeListings(p):[]).filter(l=>l.status==='active');
-    if(!ls.length)return;
-    const l=ls.slice().sort((a,b)=>(a.price==null?Infinity:Number(a.price))-(b.price==null?Infinity:Number(b.price)))[0];
-    if(typeof pass==='function'&&!pass(p,l))return;
-    out.push({p,l});
-  });return out;
-}
-function popup(r){
- const p=r.p,l=r.l;const price=l.price==null?'—':new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(Number(l.price));
- const legal=typeof legalStatuses==='function'?legalStatuses(p):[];
- const safe=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
- return `<div style="min-width:200px"><div style="font-size:18px;font-weight:800">${price}${operation==='rent'?'/mes':''}</div><div style="font-size:12px;color:#667085;margin:5px 0">${p.surface_useful||p.surface_built?Math.round(Number(p.surface_useful||p.surface_built))+' m² · ':''}${p.bedrooms??'—'} hab. · ${safe(p.population||p.municipality||'')}</div>${legal.length?`<div style="font-size:11px;color:#b42318;font-weight:700;margin-bottom:5px">${safe(legal.join(' · '))}</div>`:''}<a href="?property=${encodeURIComponent(p.id)}" style="color:#1769aa;font-weight:700;text-decoration:none">Ver ficha</a></div>`;
-}
-async function renderMap(){
- try{await loadLeaflet();const el=document.getElementById('unifiedMap');if(!el)return;
-  if(!umap){umap=L.map(el).setView([41.3874,2.1686],12);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(umap);ulayer=L.layerGroup().addTo(umap);}
-  ulayer.clearLayers();const rows=mapRows();rows.forEach(r=>L.marker([Number(r.p.latitude),Number(r.p.longitude)]).bindPopup(popup(r)).addTo(ulayer));
-  if(rows.length)umap.fitBounds(L.latLngBounds(rows.map(r=>[Number(r.p.latitude),Number(r.p.longitude)])),{padding:[30,30],maxZoom:15});
-  setTimeout(()=>umap.invalidateSize(),100);
- }catch(e){console.error('Unified map error',e)}
-}
+function loadLeaflet(){if(window.L)return Promise.resolve();if(leafletPromise)return leafletPromise;leafletPromise=new Promise((resolve,reject)=>{const css=document.createElement('link');css.rel='stylesheet';css.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(css);const sc=document.createElement('script');sc.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';sc.onload=resolve;sc.onerror=reject;document.head.appendChild(sc)});return leafletPromise}
+function mapRows(){const out=[];const ps=(typeof properties!=='undefined'&&Array.isArray(properties))?properties:[];ps.forEach(p=>{const lat=Number(p.latitude),lon=Number(p.longitude);if(!Number.isFinite(lat)||!Number.isFinite(lon)||lat<35||lat>44||lon<-10||lon>5)return;const ls=(typeof activeListings==='function'?activeListings(p):[]).filter(l=>l.status==='active');if(!ls.length)return;const l=ls.slice().sort((a,b)=>(a.price==null?Infinity:Number(a.price))-(b.price==null?Infinity:Number(b.price)))[0];if(typeof pass==='function'&&!pass(p,l))return;out.push({p,l})});return out}
+function popup(r){const p=r.p,l=r.l;const price=l.price==null?'—':new Intl.NumberFormat('es-ES',{style:'currency',currency:'EUR',maximumFractionDigits:0}).format(Number(l.price));const legal=typeof legalStatuses==='function'?legalStatuses(p):[];const safe=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));return `<div style="min-width:200px"><div style="font-size:18px;font-weight:800">${price}${operation==='rent'?'/mes':''}</div><div style="font-size:12px;color:#667085;margin:5px 0">${p.surface_useful||p.surface_built?Math.round(Number(p.surface_useful||p.surface_built))+' m² · ':''}${p.bedrooms??'—'} hab. · ${safe(p.population||p.municipality||'')}</div>${legal.length?`<div style="font-size:11px;color:#b42318;font-weight:700;margin-bottom:5px">${safe(legal.join(' · '))}</div>`:''}<a href="?property=${encodeURIComponent(p.id)}" style="color:#1769aa;font-weight:700;text-decoration:none">Ver ficha</a></div>`}
+async function renderMap(){try{await loadLeaflet();const el=document.getElementById('unifiedMap');if(!el)return;if(!umap){umap=L.map(el).setView([41.3874,2.1686],12);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap contributors'}).addTo(umap);ulayer=L.layerGroup().addTo(umap)}ulayer.clearLayers();const rows=mapRows();rows.forEach(r=>L.marker([Number(r.p.latitude),Number(r.p.longitude)]).bindPopup(popup(r)).addTo(ulayer));if(rows.length)umap.fitBounds(L.latLngBounds(rows.map(r=>[Number(r.p.latitude),Number(r.p.longitude)])),{padding:[30,30],maxZoom:15});setTimeout(()=>umap.invalidateSize(),100)}catch(e){console.error('Unified map error',e)}}
 function setMode(map){mapMode=map;const list=document.getElementById('list'),el=document.getElementById('unifiedMap');if(list)list.style.display=map?'none':'';if(el)el.style.display=map?'block':'none';document.getElementById('viewList')?.classList.toggle('active',!map);document.getElementById('viewMap')?.classList.toggle('active',map);if(map)setTimeout(renderMap,50)}
 function refresh(){if(mapMode)setTimeout(renderMap,100)}
-window.addEventListener('load',()=>{
- document.getElementById('viewList')?.addEventListener('click',()=>setMode(false));document.getElementById('viewMap')?.addEventListener('click',()=>setMode(true));
- ['apply','reset','saleMode','rentMode','clearMobile','municipality','population','neighborhood','sort'].forEach(id=>document.getElementById(id)?.addEventListener('click',refresh));
-});
+window.addEventListener('load',()=>{document.getElementById('viewList')?.addEventListener('click',()=>setMode(false));document.getElementById('viewMap')?.addEventListener('click',()=>setMode(true));['apply','reset','saleMode','rentMode','clearMobile','municipality','population','neighborhood','sort'].forEach(id=>document.getElementById(id)?.addEventListener('click',refresh))})
 })();
 </script>'''
           s=s.replace('</body>',js+'</body>',1)
@@ -93,4 +67,4 @@ window.addEventListener('load',()=>{
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add index.html
-          if git diff --cached --quiet; then echo 'No changes'; else git commit -m 'Unify list and map view'; git push; fi
+          if git diff --cached --quiet; then echo 'No changes'; else git commit -m 'Normalize unified list map view'; git push; fi
